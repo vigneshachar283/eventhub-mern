@@ -1,0 +1,1 @@
+Description, Features, Tech Stack, Setup, How to Run, AI Tool Used, AI Development Experience.
