@@ -3,6 +3,7 @@ const cors = require('cors');
 const morgan = require('morgan');
 
 const authRoutes = require('./routes/authRoutes');
+const eventRoutes = require('./routes/eventRoutes');
 
 const app = express();
 
@@ -19,6 +20,7 @@ app.get("/api/health", (req, res) => {
 
 // ── Routes ───────────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
+app.use('/api/events', eventRoutes);
 
 // ── 404 handler ──────────────────────────────────────────────────────────────
 app.use((req, res) => {
@@ -26,9 +28,25 @@ app.use((req, res) => {
 });
 
 // ── Global error handler ─────────────────────────────────────────────────────
-// Reads err.statusCode set by services; falls back to 500.
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
+  // MongoDB duplicate key — e.g. unique booking or duplicate email
+  if (err.code === 11000) {
+    return res.status(409).json({ message: 'Duplicate entry: resource already exists' });
+  }
+
+  // Mongoose validation errors
+  if (err.name === 'ValidationError') {
+    const messages = Object.values(err.errors).map((e) => e.message);
+    return res.status(400).json({ message: messages.join(', ') });
+  }
+
+  // Cast error — e.g. invalid ObjectId in a route param
+  if (err.name === 'CastError') {
+    return res.status(400).json({ message: `Invalid value for field '${err.path}'` });
+  }
+
+  // Default: read statusCode set by services, fall back to 500
   const status = err.statusCode || 500;
   const message = err.message || 'Internal server error';
   res.status(status).json({ message });
