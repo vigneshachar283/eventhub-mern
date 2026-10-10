@@ -7,12 +7,14 @@ const {
   updateEventController,
   deleteEventController,
 } = require('../controllers/eventController');
+const { bookSeatsController } = require('../controllers/bookingController');
 const {
   validate,
   validateQuery,
   eventBodySchema,
   eventUpdateSchema,
   eventQuerySchema,
+  bookSeatsSchema,
 } = require('../middleware/validate');
 const { protect, restrictTo } = require('../middleware/auth');
 
@@ -26,6 +28,15 @@ router.get('/', validateQuery(eventQuerySchema), getEventsController);
 // /mine must be defined before /:id — otherwise Express matches "mine" as an
 // ObjectId param and the route never fires
 router.get('/mine', protect, restrictTo('organizer'), getMyEventsController);
+
+// POST /api/events/:id/book — must be before GET /:id for the same reason
+router.post(
+  '/:id/book',
+  protect,
+  restrictTo('attendee'),
+  validate(bookSeatsSchema),
+  bookSeatsController
+);
 
 router.get('/:id', getEventByIdController);
 

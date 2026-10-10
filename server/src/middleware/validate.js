@@ -137,6 +137,23 @@ const eventQuerySchema = z
   })
   .strict();
 
+// ---------------------------------------------------------------------------
+// Booking schemas
+// ---------------------------------------------------------------------------
+
+const bookSeatsSchema = z
+  .object({
+    seats: z
+      .number({
+        required_error: 'seats is required',
+        invalid_type_error: 'seats must be a number',
+      })
+      .int('seats must be a whole number')
+      .min(1, 'seats must be at least 1')
+      .max(10, 'seats cannot exceed 10 per booking'),
+  })
+  .strict();
+
 module.exports = {
   validate,
   validateQuery,
@@ -145,4 +162,5 @@ module.exports = {
   eventBodySchema,
   eventUpdateSchema,
   eventQuerySchema,
+  bookSeatsSchema,
 };

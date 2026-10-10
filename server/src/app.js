@@ -4,6 +4,7 @@ const morgan = require('morgan');
 
 const authRoutes = require('./routes/authRoutes');
 const eventRoutes = require('./routes/eventRoutes');
+const bookingRoutes = require('./routes/bookingRoutes');
 
 const app = express();
 
@@ -21,6 +22,7 @@ app.get("/api/health", (req, res) => {
 // ── Routes ───────────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
 app.use('/api/events', eventRoutes);
+app.use('/api/bookings', bookingRoutes);
 
 // ── 404 handler ──────────────────────────────────────────────────────────────
 app.use((req, res) => {
