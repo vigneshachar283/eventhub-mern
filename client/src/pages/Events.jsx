@@ -31,6 +31,11 @@ export default function Events() {
       const params = { page, limit: 9, ...query };
       // Strip empty strings so they don't reach the server
       Object.keys(params).forEach((k) => { if (!params[k]) delete params[k]; });
+      // Convert YYYY-MM-DD (from <input type="date">) to full ISO 8601 strings.
+      // eventQuerySchema requires datetime({ offset: true }), so a bare date fails.
+      // dateTo is treated as end-of-day so events on that day are included.
+      if (params.dateFrom) params.dateFrom = new Date(params.dateFrom).toISOString();
+      if (params.dateTo)   params.dateTo   = new Date(params.dateTo + 'T23:59:59').toISOString();
       const { data } = await api.get('/events', { params });
       setEvents(data.events);
       setTotal(data.total);

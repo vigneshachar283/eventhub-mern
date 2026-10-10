@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api/axios';
 import ErrorMessage from '../components/ErrorMessage';
@@ -57,6 +58,7 @@ export default function OrganizerDashboard() {
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState('');
   const [deleting, setDeleting] = useState(null);
+  const [refresh, setRefresh]   = useState(0); // increment to re-fetch
   const [attendeeEvent, setAttendeeEvent] = useState(null); // { id, title }
 
   useEffect(() => {
@@ -66,10 +68,12 @@ export default function OrganizerDashboard() {
         setEvents(data.events);
         setTotal(data.total);
         setPages(data.pages);
+        // If we deleted the last item on the last page, step back one page
+        if (data.events.length === 0 && page > 1) setPage((p) => p - 1);
       })
       .catch((err) => setError(err.response?.data?.message || 'Failed to load your events'))
       .finally(() => setLoading(false));
-  }, [page]);
+  }, [page, refresh]);
 
   async function handleDelete(eventId, title) {
     if (!window.confirm(`Delete "${title}"? This cannot be undone.`)) return;
@@ -77,8 +81,8 @@ export default function OrganizerDashboard() {
     setError('');
     try {
       await api.delete(`/events/${eventId}`);
-      setEvents((prev) => prev.filter((e) => e._id !== eventId));
-      setTotal((prev) => prev - 1);
+      // Re-fetch instead of mutating local state — keeps pages/total accurate
+      setRefresh((n) => n + 1);
     } catch (err) {
       // Surface the 409 "confirmed bookings" message clearly
       setError(err.response?.data?.message || 'Delete failed');

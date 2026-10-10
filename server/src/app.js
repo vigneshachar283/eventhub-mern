@@ -9,7 +9,12 @@ const bookingRoutes = require('./routes/bookingRoutes');
 const app = express();
 
 // ── Global middleware ────────────────────────────────────────────────────────
-app.use(cors());
+app.use(cors({
+  // Allow the Vite dev server and the deployed frontend.
+  // Set CLIENT_ORIGIN in .env for production.
+  origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
+  credentials: true,
+}));
 app.use(express.json());
 app.use(morgan('dev'));
 

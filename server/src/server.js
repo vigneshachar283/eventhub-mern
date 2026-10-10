@@ -3,10 +3,13 @@ dns.setServers(["8.8.8.8", "1.1.1.1"]);
 
 require('dotenv').config();
 
-// Fail fast — a missing JWT_SECRET would produce silent 401s that are very
-// hard to debug at runtime.
+// Fail fast — missing secrets produce confusing errors deep in the stack
 if (!process.env.JWT_SECRET) {
   console.error('FATAL: JWT_SECRET environment variable is not set. Exiting.');
+  process.exit(1);
+}
+if (!process.env.MONGO_URI) {
+  console.error('FATAL: MONGO_URI environment variable is not set. Exiting.');
   process.exit(1);
 }
 
