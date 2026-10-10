@@ -83,6 +83,19 @@ async function deleteEventController(req, res, next) {
   }
 }
 
+/**
+ * GET /api/events/:id/bookings  (organizer-only)
+ * Returns confirmed bookings for the event. Ownership verified in service.
+ */
+async function getEventBookingsController(req, res, next) {
+  try {
+    const bookings = await eventService.getEventBookings(req.params.id, req.user._id);
+    return res.status(200).json({ bookings });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   createEventController,
   getEventsController,
@@ -90,4 +103,5 @@ module.exports = {
   getEventByIdController,
   updateEventController,
   deleteEventController,
+  getEventBookingsController,
 };

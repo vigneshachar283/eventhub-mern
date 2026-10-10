@@ -214,4 +214,27 @@ async function deleteEvent(eventId, organizerId) {
   await event.deleteOne();
 }
 
-module.exports = { createEvent, getEvents, getMyEvents, getEventById, updateEvent, deleteEvent };
+/**
+ * Get the confirmed attendee list for an event.
+ * Organizer-only — ownership verified in the controller.
+ *
+ * @param {string} eventId
+ * @param {string} organizerId
+ */
+async function getEventBookings(eventId, organizerId) {
+  const event = await Event.findById(eventId).select('organizer');
+  if (!event) throw httpError(404, 'Event not found');
+
+  if (!event.organizer.equals(organizerId)) {
+    throw httpError(403, 'You are not authorised to view bookings for this event');
+  }
+
+  const bookings = await Booking.find({ event: eventId, status: 'confirmed' })
+    .populate('user', 'name email')
+    .sort({ createdAt: 1 })
+    .lean();
+
+  return bookings;
+}
+
+module.exports = { createEvent, getEvents, getMyEvents, getEventById, updateEvent, deleteEvent, getEventBookings };

@@ -6,6 +6,7 @@ const {
   getEventByIdController,
   updateEventController,
   deleteEventController,
+  getEventBookingsController,
 } = require('../controllers/eventController');
 const { bookSeatsController } = require('../controllers/bookingController');
 const {
@@ -36,6 +37,14 @@ router.post(
   restrictTo('attendee'),
   validate(bookSeatsSchema),
   bookSeatsController
+);
+
+// GET /api/events/:id/bookings — organizer attendee list; before /:id
+router.get(
+  '/:id/bookings',
+  protect,
+  restrictTo('organizer'),
+  getEventBookingsController
 );
 
 router.get('/:id', getEventByIdController);

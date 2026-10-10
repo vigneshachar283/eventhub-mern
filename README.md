@@ -1,38 +1,103 @@
-# EventHub MERN
+# EventHub
 
-A full-stack event management platform built with MongoDB, Express, React, and Node.js.
+A full-stack event management platform built with the MERN stack. Organizers can create and manage events; attendees can browse, search, filter, and book seats with real-time overbooking protection.
 
 ---
 
 ## Features
 
-- JWT authentication with role-based access (organizer / attendee)
-- Event creation, listing (full-text search, filters, pagination), and management
-- Seat booking with overbooking protection
-- Booking cancellation with automatic seat restoration
+- **Role-based auth** — JWT with HS256, separate organizer and attendee flows
+- **Event management** — create, edit, delete events with full-text search, category and date filters, and pagination
+- **Atomic seat booking** — MongoDB multi-document transactions prevent overselling even under concurrent load
+- **Double-booking prevention** — partial unique index on `{ user, event }` blocks duplicate confirmed bookings
+- **Booking cancellation** — seats are atomically restored; cancellation is transactional
+- **Organizer dashboard** — seat counts, attendee list per event, edit and delete
+- **Concurrency verified** — custom script fires 20 simultaneous bookings for 5 seats and asserts exactly 5 succeed (0 oversold every run)
+
+---
 
 ## Tech Stack
 
-- **Backend**: Node.js, Express 5, Mongoose, Zod, bcryptjs, jsonwebtoken
-- **Database**: MongoDB Atlas (replica set — required for transactions)
-- **Frontend**: React (in progress)
+| Layer | Technology |
+|-------|-----------|
+| Frontend | React 19, React Router v7, Axios |
+| Backend | Node.js, Express 5 |
+| Database | MongoDB Atlas (replica set — required for transactions) |
+| ODM | Mongoose 9 |
+| Validation | Zod 4 (body + query schemas, `.strict()`) |
+| Auth | bcryptjs, jsonwebtoken (HS256, 7-day expiry) |
+| Build tool | Vite 8 |
 
 ---
 
 ## Setup
 
+### Prerequisites
+- Node.js 18+
+- A MongoDB Atlas cluster (replica set, for transactions)
+
+### Server
+
 ```bash
 cd server
-cp .env.example .env   # fill in MONGO_URI and JWT_SECRET
+cp .env.example .env
+```
+
+Fill in `.env`:
+```
+PORT=5000
+MONGO_URI=<your Atlas connection string>
+JWT_SECRET=<a long random secret>
+```
+
+```bash
 npm install
 npm run dev
 ```
 
-JWT_SECRET must be set — the server exits immediately on startup if it is missing.
+The server exits immediately on startup if `JWT_SECRET` is not set.
+
+### Client
+
+```bash
+cd client
+cp .env.example .env   # VITE_API_URL=http://localhost:5000/api
+npm install
+npm run dev
+```
+
+Open `http://localhost:5173`.
 
 ---
 
-## API Overview
+## How to Run
+
+Start both in separate terminals:
+
+```bash
+# terminal 1
+cd server && npm run dev
+
+# terminal 2
+cd client && npm run dev
+```
+
+### Concurrency test (optional)
+
+With the server running:
+```bash
+cd server
+node scripts/concurrency-test.js
+```
+
+Expected output:
+```
+✓ PASS — exactly 5 bookings succeeded, no overbooking.
+```
+
+---
+
+## API Reference
 
 | Method | Path | Auth | Role |
 |--------|------|------|------|
@@ -42,74 +107,57 @@ JWT_SECRET must be set — the server exits immediately on startup if it is miss
 | GET | /api/events | — | — |
 | GET | /api/events/mine | ✓ | organizer |
 | GET | /api/events/:id | — | — |
+| GET | /api/events/:id/bookings | ✓ | organizer (owner) |
 | POST | /api/events | ✓ | organizer |
-| PATCH | /api/events/:id | ✓ | organizer (owner only) |
-| DELETE | /api/events/:id | ✓ | organizer (owner only) |
+| PATCH | /api/events/:id | ✓ | organizer (owner) |
+| DELETE | /api/events/:id | ✓ | organizer (owner) |
 | POST | /api/events/:id/book | ✓ | attendee |
 | GET | /api/bookings/mine | ✓ | any |
-| PATCH | /api/bookings/:id/cancel | ✓ | any (owner only) |
+| PATCH | /api/bookings/:id/cancel | ✓ | owner |
 
 ---
 
-## Architecture Notes
+## Architecture Decisions
 
-### JWT algorithm
-All tokens are signed and verified with HS256 explicitly. This prevents
-algorithm-switching attacks (e.g. `alg: none`).
+**Transactions over manual rollback** — `bookSeats` and `cancelBooking` use `session.withTransaction()`. A crash between the seat decrement and the booking write would silently leak seats in a two-step approach; a transaction rolls both back atomically.
 
-### Event seat counts
-`availableSeats` is never accepted from the client. It is set by the schema
-default on creation and modified only by atomic `$inc` operations in the
-booking and event-update services. The event-update path uses optimistic
-locking (the filter includes the last-known `totalSeats`) so concurrent
-bookings cannot be overwritten.
+**Optimistic locking on event updates** — `updateEvent` uses `findOneAndUpdate` with `$inc` (not read → mutate → save). If a booking arrives between the read and write, the filter's `totalSeats` check detects the conflict and returns a 409 "please retry" instead of silently overwriting the decrement.
 
-### Booking transactions
-`bookSeats` and `cancelBooking` run inside MongoDB multi-document transactions
-(requires Atlas or a replica set). This closes the seat-leak window that would
-exist in a two-step approach: if the process crashed between decrementing
-`availableSeats` and writing the booking document, seats would be lost forever.
-With a transaction both writes commit or roll back together.
+**`availableSeats` denormalised on Event** — avoids a `Booking.countDocuments` aggregation on every list request. All mutations go through the service layer using `$inc` to keep the count accurate.
 
-The pre-transaction approach (decrement → create → rollback on failure) is
-documented in git history as a deliberate tradeoff for environments that
-cannot use transactions.
+**Zod `.strict()` on event schemas** — `availableSeats` and `organizer` cannot be submitted by clients; unknown keys return 400 rather than being silently stripped.
 
-### Double-booking prevention
-A partial unique index on `{ user, event }` where `status: 'confirmed'`
-prevents two confirmed bookings for the same event. A cancelled booking does
-not block a re-book. A fast `Booking.exists` check before the transaction
-returns a clean 409 on a double-click without touching the seat count.
-
-### Event deletion
-An event with confirmed bookings cannot be deleted (409). This protects
-attendees from silently losing their booking records. The richer alternative
-— an event `status` field (active | cancelled) that bulk-cancels bookings —
-is a planned enhancement.
+**JWT algorithm pinned to HS256** — prevents algorithm-switching attacks (`alg: none`).
 
 ---
 
 ## Policy Decisions
 
-### Can an attendee cancel after an event has started?
-**Current behaviour: yes.** There is no check against `event.date` in
-`cancelBooking`. The seats are returned to the pool, which is harmless for a
-past event but looks odd in the data.
-**Planned change:** add `event.date > new Date()` to the cancellation guard
-once the UI is in place and a policy is agreed.
+| Decision | Current behaviour |
+|----------|------------------|
+| Cancel after event starts | Allowed — no date check in `cancelBooking`. Planned enhancement. |
+| Organizer books own event | Blocked — `restrictTo('attendee')` on the book route. |
+| Delete event with bookings | Blocked with 409 — protects attendee records. |
+| Re-book after cancellation | Allowed — partial unique index only covers `status: confirmed`. |
+| Null event in booking list | Handled in UI — shows "Event no longer available". |
 
-### Can an organizer book their own event?
-**No.** `restrictTo('attendee')` on `POST /api/events/:id/book` blocks any
-user with role `organizer`. This is intentional.
+---
 
-### What if an event is deleted after a booking is made?
-Deletion is blocked while confirmed bookings exist, so this case cannot arise
-for confirmed bookings. Cancelled bookings are left as-is after deletion.
-`getMyBookings` populates `event` — if the event no longer exists the field
-will be `null`. The React UI should handle this gracefully (e.g. show
-"Event no longer available").
+## AI Development Experience
 
-### Why is `availableSeats` stored on the Event document?
-It avoids an aggregation query on every event listing. The tradeoff is that
-it must be kept in sync with the bookings collection. All mutations go through
-the service layer, which uses `$inc` to keep the two consistent.
+This project was built using **Kiro**, an AI-powered development environment.
+
+### 1. Atomic booking with MongoDB transactions
+The initial booking implementation used a two-step decrement-then-create with a manual rollback on failure. Kiro identified the seat-leak window (process crash between steps) and proposed replacing it with `session.withTransaction()`. This required restructuring `Booking.create` to accept an array with a session object — a Mongoose-specific API difference Kiro caught and corrected.
+
+### 2. Race condition in event seat updates
+The first `updateEvent` implementation used `Object.assign + event.save()`, which has a read-modify-write race: a booking arriving between the read and the save would have its decrement silently overwritten. Kiro redesigned this to use `findOneAndUpdate` with `$inc` and an optimistic lock on `totalSeats`, so concurrent booking decrements are preserved.
+
+### 3. Zod validation for query strings
+Kiro introduced a separate `validateQuery` middleware (writing to `req.validatedQuery` rather than overwriting Express's `req.query`) and built `eventQuerySchema` with `z.coerce.number()` for `page`/`limit` and `offset: true` on datetime fields to accept timezone-offset ISO strings from real-world clients.
+
+### 4. Concurrency test script
+Kiro wrote `scripts/concurrency-test.js` — 20 attendees, 5 seats, all requests fired simultaneously with `Promise.all`. The script distinguishes 201 (booked) from 409 (rejected), verifies `availableSeats === 0` after the run, and exits with a non-zero code on failure. Verified PASS on Atlas.
+
+### 5. Schema hardening
+Kiro audited the Booking model and added: an integer validator on `seats`, a `totalPrice` snapshot field (so old bookings show the correct price after an organizer edits the event price), and a partial unique index on `{ user, event }` filtered to `status: confirmed` — which prevents double-booking while allowing re-booking after cancellation.
