@@ -129,6 +129,8 @@ Expected output:
 
 **JWT algorithm pinned to HS256** — prevents algorithm-switching attacks (`alg: none`).
 
+**JWT stored in localStorage** — simple and works for a same-origin SPA. The tradeoff is that any injected script (XSS) can read it. The safer pattern is an `httpOnly` cookie, which is inaccessible to JavaScript. For this project localStorage is acceptable; a production deployment should move to `httpOnly` cookies with `SameSite=Strict` and a CSRF token.
+
 ---
 
 ## Policy Decisions

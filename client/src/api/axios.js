@@ -12,15 +12,28 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// On 401, clear stale credentials and redirect to login
+// 401 handling:
+//  - Auth endpoints (login / register) return 401 for wrong credentials — let
+//    those errors propagate normally so the form can display them.
+//  - For any other 401 where we actually sent a token, the session has expired.
+//    Clear storage and fire a custom event; AuthContext listens and sets user
+//    to null, which triggers ProtectedRoute to redirect — no full page reload.
 api.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err.response?.status === 401) {
+    const url = err.config?.url ?? '';
+    const isAuthEndpoint =
+      url.startsWith('/auth/login') || url.startsWith('/auth/register');
+
+    if (
+      err.response?.status === 401 &&
+      !isAuthEndpoint &&
+      localStorage.getItem('token')
+    ) {
       localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      window.location.href = '/login';
+      window.dispatchEvent(new Event('auth:expired'));
     }
+
     return Promise.reject(err);
   }
 );
